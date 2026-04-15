@@ -1,0 +1,48 @@
+{
+  "name": "keymux",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Transparent API key pooling for the OpenAI SDK — rotate keys on 429 automatically",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "npm run lint && npm run type-check && npm run test && npm run build"
+  },
+  "peerDependencies": {
+    "openai": ">=6.0.0"
+  },
+  "devDependencies": {
+    "openai": "^6.0.0",
+    "typescript": "^5.8.0",
+    "tsup": "^8.0.0",
+    "vitest": "^4.0.0",
+    "@vitest/coverage-v8": "^4.0.0",
+    "@biomejs/biome": "^1.9.0"
+  },
+  "keywords": ["openai", "api-key", "rate-limit", "key-rotation", "gemini", "pool"],
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
