@@ -42,6 +42,14 @@
     "@biomejs/biome": "^1.9.0"
   },
   "keywords": ["openai", "api-key", "rate-limit", "key-rotation", "gemini", "pool"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iammalego/keymux.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iammalego/keymux/issues"
+  },
+  "homepage": "https://github.com/iammalego/keymux#readme",
   "engines": {
     "node": ">=22.0.0"
   }

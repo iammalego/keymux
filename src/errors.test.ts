@@ -20,6 +20,7 @@ describe('maskKey', () => {
 })
 
 describe('KeyPoolExhaustedError', () => {
+  // biome-ignore lint/suspicious/noExplicitAny: test fixture — RateLimitError constructor not easily instantiable
   const cause = new Error('original') as any
   const err = new KeyPoolExhaustedError(['sk-key-aaa', 'sk-key-bbb'], cause)
 

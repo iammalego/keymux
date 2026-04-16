@@ -97,11 +97,9 @@ export class KeyPool extends OpenAI {
     if (!keys || keys.length === 0) {
       throw new Error('KeyPool requires at least one API key in `keys`')
     }
-    const validKeys = keys.filter(k => typeof k === 'string' && k.trim() !== '')
+    const validKeys = keys.filter((k) => typeof k === 'string' && k.trim() !== '')
     if (validKeys.length === 0) {
-      throw new Error(
-        'KeyPool: all keys are empty strings — provide at least one non-empty key',
-      )
+      throw new Error('KeyPool: all keys are empty strings — provide at least one non-empty key')
     }
 
     const scheduler = new KeyScheduler(validKeys, strategy)
@@ -121,13 +119,14 @@ export class KeyPool extends OpenAI {
     // Override makeRequest (declared private in TS but accessible in JS at runtime).
     // This is the single interception point for all SDK methods (.chat, .embeddings, etc.).
     // We catch the final RateLimitError after all retries and wrap it as KeyPoolExhaustedError.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: runtime access to private method unavailable in TS type system
     const proto = this as unknown as any
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    const originalMakeRequest: (...args: unknown[]) => Promise<unknown> = proto['makeRequest'].bind(
-      this,
-    )
+    const originalMakeRequest: (...args: unknown[]) => Promise<unknown> =
+      // biome-ignore lint/complexity/useLiteralKeys: makeRequest is private in TS — bracket notation required
+      proto['makeRequest'].bind(this)
     const self = this
+    // biome-ignore lint/complexity/useLiteralKeys: makeRequest is private in TS — bracket notation required
+    // biome-ignore lint/complexity/useArrowFunction: regular function preserves runtime prototype assignment semantics
     proto['makeRequest'] = async function (...args: unknown[]) {
       try {
         return await originalMakeRequest(...args)

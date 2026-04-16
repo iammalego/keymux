@@ -9,9 +9,10 @@ function makeMockFetch(responses: Array<{ status: number; body?: object }>) {
 
   const mockFetch = async (_url: string | URL | Request, init?: RequestInit) => {
     const headers = init?.headers as Record<string, string> | undefined
-    const auth = headers?.['Authorization'] ?? headers?.['authorization']
+    const auth = headers?.Authorization ?? headers?.authorization
     if (auth) keysUsed.push(auth.replace('Bearer ', ''))
 
+    // biome-ignore lint/style/noNonNullAssertion: responses array is always non-empty (test setup guarantee)
     const response = responses[callCount] ?? responses.at(-1)!
     callCount++
 
@@ -126,7 +127,7 @@ describe('KeyPool — 429 rotation', () => {
     })
     const err = await pool.chat.completions
       .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
-      .catch(e => e)
+      .catch((e) => e)
     expect(err.message).toBe('All 2 API keys are rate-limited')
   })
 
@@ -139,7 +140,7 @@ describe('KeyPool — 429 rotation', () => {
     })
     const err = await pool.chat.completions
       .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
-      .catch(e => e)
+      .catch((e) => e)
     expect(err.keys).toHaveLength(3)
     expect(err.keys[0]).toContain('...')
   })
@@ -153,7 +154,7 @@ describe('KeyPool — 429 rotation', () => {
     })
     const err = await pool.chat.completions
       .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
-      .catch(e => e)
+      .catch((e) => e)
     expect(err.cause).toBeInstanceOf(OpenAI.RateLimitError)
   })
 

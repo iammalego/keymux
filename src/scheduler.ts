@@ -24,7 +24,7 @@ export class KeyScheduler {
    * @throws {Error} If `keys` is empty or contains only blank strings.
    */
   constructor(keys: string[], strategy: Strategy = 'round-robin') {
-    const valid = keys.filter(k => k.trim() !== '')
+    const valid = keys.filter((k) => k.trim() !== '')
     if (valid.length === 0) {
       throw new Error('KeyScheduler requires at least one non-empty key')
     }
@@ -53,16 +53,21 @@ export class KeyScheduler {
   }
 
   #nextRoundRobin(): string {
+    // biome-ignore lint/style/noNonNullAssertion: index is always in bounds (modulo keys.length)
     const key = this.#keys[this.#index]!
     this.#index = (this.#index + 1) % this.#keys.length
     return key
   }
 
   #nextLRU(): string {
+    // biome-ignore lint/style/noNonNullAssertion: keys array is non-empty (guaranteed by constructor)
     let oldestKey = this.#keys[0]!
+    // biome-ignore lint/style/noNonNullAssertion: map is populated from keys array in constructor
     let oldestTime = this.#lastUsedAt.get(oldestKey)!
     for (let i = 1; i < this.#keys.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: i < keys.length, always in bounds
       const key = this.#keys[i]!
+      // biome-ignore lint/style/noNonNullAssertion: map is populated from keys array in constructor
       const t = this.#lastUsedAt.get(key)!
       if (t < oldestTime) {
         oldestTime = t
