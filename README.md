@@ -16,6 +16,9 @@ Google's Gemini models are available for free via the OpenAI-compatible endpoint
 npm install keymux openai
 ```
 
+> [!IMPORTANT]
+> `keymux` requires **`openai` >= 6.0.0**. The async `apiKey` function support used internally was introduced in v6.
+
 ## Getting Started
 
 ```typescript
@@ -65,11 +68,23 @@ try {
 
 Each Google Cloud project gets its own free tier quota. On the free tier you get up to 15 RPM (requests per minute) and 1,500 RPD (requests per day) per project with Gemini 2.0 Flash.
 
-> **IMPORTANT — Keys must be from different Google accounts**
+> [!WARNING]
+> **Keys must be from different Google accounts.**
 >
-> Multiple API keys created under the **same Google account or the same Google Cloud project** share the same rate limit quota. Creating 10 keys from the same account does NOT give you 10× the rate limit — it still counts as one project's quota.
+> Multiple API keys created under the **same Google account or the same Google Cloud project** share the same rate limit quota. Creating 10 keys from the same account does NOT give you 10× the rate limit.
 >
-> **To multiply your effective rate limit, each key must come from a completely separate Google account (and therefore a separate Google Cloud project).**
+> To multiply your effective rate limit, each key must come from a completely separate Google account (and therefore a separate Google Cloud project).
+
+> [!TIP]
+> Use `strategy: 'least-recently-used'` for Gemini. It always picks the key unused for the longest time, maximizing the window between reuses and reducing the chance of hitting the per-minute limit.
+>
+> ```typescript
+> const client = new KeyPool({
+>   keys: [...],
+>   baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+>   strategy: 'least-recently-used',
+> })
+> ```
 
 ## API Reference
 
@@ -91,6 +106,9 @@ const client = new KeyPool(config: KeyPoolConfig)
 | `maxRetries` | `number` | `keys.length` | Maximum retry attempts before giving up. Defaults to one attempt per key. |
 | `onExhausted` | `(maskedKeys: string[]) => void` | — | Called when all keys are exhausted. Receives masked key list (safe to log/alert). |
 | `openaiOptions` | `Omit<ClientOptions, 'apiKey' \| 'baseURL' \| 'maxRetries'>` | — | Pass-through options for the underlying OpenAI client (e.g. `fetch`, `timeout`, `defaultHeaders`). |
+
+> [!NOTE]
+> `maxRetries` defaults to `keys.length`, meaning each key gets exactly one attempt before `KeyPoolExhaustedError` is thrown. Increase it if you want multiple attempts per key.
 
 ### `Strategy`
 
@@ -123,6 +141,9 @@ maskKey('AIzaSyB1234567890abcdef') // → 'AIza...cdef'
 maskKey('sk-proj-abc123xyz')       // → 'sk-p...3xyz'
 maskKey('short')                   // → '***'
 ```
+
+> [!NOTE]
+> `maskKey` is exported so you can use it in your own logging — for example when you store keys in a database and want to display them safely in a UI.
 
 ## TypeScript
 
