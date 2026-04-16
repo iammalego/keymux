@@ -153,6 +153,44 @@ Full TypeScript types ship with the package. No `@types/` package needed.
 import type { KeyPoolConfig, Strategy } from 'keymux'
 ```
 
+## Project Structure
+
+```
+keymux/
+├── src/
+│   ├── index.ts              # Public exports
+│   ├── key-pool.ts           # KeyPool — extends OpenAI, rotation entry point
+│   ├── key-pool.test.ts
+│   ├── scheduler.ts          # KeyScheduler — round-robin and LRU logic
+│   ├── scheduler.test.ts
+│   ├── errors.ts             # KeyPoolExhaustedError + maskKey()
+│   └── errors.test.ts
+├── dist/                     # Build output (ESM + CJS + .d.ts)
+├── tsup.config.ts            # Build config
+├── vitest.config.ts          # Test config
+└── package.json
+```
+
+## Contributing
+
+Bug reports and feature requests are welcome — please use the [issue templates](https://github.com/iammalego/keymux/issues/new/choose).
+
+For code contributions:
+
+```bash
+git clone https://github.com/iammalego/keymux.git
+cd keymux
+npm install
+
+npm test           # run tests
+npx tsc --noEmit   # type check
+npm run build      # build dist/
+```
+
+> [!NOTE]
+> This project follows strict TDD — tests are written before implementation.
+> All PRs must include tests for new behavior.
+
 ## License
 
 MIT
