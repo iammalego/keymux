@@ -4,28 +4,89 @@ import { KeyPoolExhaustedError, maskKey } from './errors'
 import { KeyScheduler } from './scheduler'
 import type { Strategy } from './scheduler'
 
+/**
+ * Configuration for {@link KeyPool}.
+ */
 export interface KeyPoolConfig {
-  /** API keys for rotation — minimum 1, rotation effective with 2+ */
+  /**
+   * API keys to rotate across. Minimum 1; rotation is effective with 2+.
+   * Each key should come from a **different Google account** when using Gemini free tier —
+   * multiple keys from the same account share the same quota.
+   */
   keys: string[]
 
-  /** Provider base URL. Defaults to OpenAI's URL.
-   *  Gemini: 'https://generativelanguage.googleapis.com/v1beta/openai' */
+  /**
+   * Base URL of the API provider.
+   *
+   * Defaults to the OpenAI API URL.
+   * For Gemini: `'https://generativelanguage.googleapis.com/v1beta/openai'`
+   */
   baseURL?: string
 
-  /** Rotation strategy. Default: 'round-robin' */
+  /**
+   * Key rotation strategy.
+   *
+   * - `'round-robin'` (default): Cycles through keys in order. O(1). Deterministic.
+   * - `'least-recently-used'`: Always picks the least-recently-used key. O(N).
+   *   Recommended for Gemini free tier.
+   */
   strategy?: Strategy
 
-  /** Max retries before giving up. Default: keys.length (one attempt per key) */
+  /**
+   * Maximum number of retry attempts before throwing {@link KeyPoolExhaustedError}.
+   *
+   * Defaults to `keys.length` — one attempt per key.
+   * Increase to allow multiple attempts per key.
+   */
   maxRetries?: number
 
-  /** Called when all keys are exhausted (for alerting) */
+  /**
+   * Called when all keys are exhausted (all retries failed with 429).
+   * Receives masked keys — safe to use in alerts or logs.
+   *
+   * @param maskedKeys - Array of masked key strings (e.g. `['AIza...cdef', 'AIza...wxyz']`).
+   */
   onExhausted?: (maskedKeys: string[]) => void
 
-  /** Pass-through options for the underlying OpenAI client.
-   *  Cannot override apiKey or baseURL or maxRetries (managed by KeyPool). */
+  /**
+   * Pass-through options forwarded to the underlying `OpenAI` client constructor.
+   * Cannot override `apiKey`, `baseURL`, or `maxRetries` — those are managed by `KeyPool`.
+   *
+   * @example
+   * new KeyPool({
+   *   keys: [...],
+   *   openaiOptions: { timeout: 30_000, defaultHeaders: { 'X-Custom': 'value' } }
+   * })
+   */
   openaiOptions?: Omit<ClientOptions, 'apiKey' | 'baseURL' | 'maxRetries'>
 }
 
+/**
+ * A drop-in replacement for the `OpenAI` client that transparently rotates
+ * across multiple API keys on every request and retry.
+ *
+ * `KeyPool` extends `OpenAI` — all SDK methods, namespaces, and types work identically.
+ *
+ * @example
+ * ```typescript
+ * import { KeyPool } from 'keymux'
+ *
+ * const client = new KeyPool({
+ *   keys: [process.env.GEMINI_KEY_1!, process.env.GEMINI_KEY_2!],
+ *   baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+ *   strategy: 'least-recently-used',
+ * })
+ *
+ * // Use exactly like the OpenAI SDK:
+ * const response = await client.chat.completions.create({
+ *   model: 'gemini-2.0-flash',
+ *   messages: [{ role: 'user', content: 'Hello!' }],
+ * })
+ * ```
+ *
+ * @throws {Error} If `keys` is empty or all keys are blank strings.
+ * @throws {KeyPoolExhaustedError} When all keys have been rate-limited after exhausting retries.
+ */
 export class KeyPool extends OpenAI {
   readonly #keys: string[]
   readonly #config: KeyPoolConfig
@@ -46,6 +107,8 @@ export class KeyPool extends OpenAI {
     const scheduler = new KeyScheduler(validKeys, strategy)
 
     super({
+      // The OpenAI SDK v6 calls this function before every request, including retries.
+      // Combined with maxRetries = keys.length, each retry automatically uses the next key.
       apiKey: () => Promise.resolve(scheduler.nextKey()),
       baseURL,
       maxRetries: maxRetries ?? validKeys.length,
@@ -55,8 +118,9 @@ export class KeyPool extends OpenAI {
     this.#keys = [...validKeys]
     this.#config = config
 
-    // Override makeRequest (private in TS declarations, but accessible in JS)
-    // We wrap the call to intercept final RateLimitError and convert to KeyPoolExhaustedError.
+    // Override makeRequest (declared private in TS but accessible in JS at runtime).
+    // This is the single interception point for all SDK methods (.chat, .embeddings, etc.).
+    // We catch the final RateLimitError after all retries and wrap it as KeyPoolExhaustedError.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const proto = this as unknown as any
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
@@ -73,7 +137,7 @@ export class KeyPool extends OpenAI {
           try {
             self.#config.onExhausted?.(maskedKeys)
           } catch {
-            // swallow callback errors
+            // swallow errors thrown inside the user's callback
           }
           throw new KeyPoolExhaustedError(self.#keys, error)
         }
@@ -82,6 +146,14 @@ export class KeyPool extends OpenAI {
     }
   }
 
+  /**
+   * Returns a new `KeyPool` instance with the given options merged in.
+   *
+   * Note: the new instance starts with a fresh rotation state (scheduler is not shared).
+   *
+   * @param options - Options to merge into the current configuration.
+   * @returns A new `KeyPool` instance.
+   */
   override withOptions(options: Partial<ClientOptions>): this {
     const merged = new KeyPool({
       ...this.#config,
