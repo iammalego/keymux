@@ -55,3 +55,32 @@ export class KeyPoolExhaustedError extends Error {
     Object.setPrototypeOf(this, new.target.prototype)
   }
 }
+
+/**
+ * Thrown when all keys in the pool are currently on cooldown
+ * and no key is available to serve the request.
+ *
+ * @example
+ * try {
+ *   await client.chat.completions.create({ ... })
+ * } catch (err) {
+ *   if (err instanceof KeyCooldownError) {
+ *     await sleep(err.retryAfterMs)
+ *     // retry...
+ *   }
+ * }
+ */
+export class KeyCooldownError extends Error {
+  override readonly name = 'KeyCooldownError'
+
+  /**
+   * Milliseconds to wait before retrying.
+   */
+  readonly retryAfterMs: number
+
+  constructor(retryAfterMs: number) {
+    super(`All API keys are on cooldown. Retry after ${Math.ceil(retryAfterMs / 1000)}s`)
+    this.retryAfterMs = retryAfterMs
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}

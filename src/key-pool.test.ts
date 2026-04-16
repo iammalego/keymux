@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { describe, expect, it, vi } from 'vitest'
-import { KeyPoolExhaustedError } from './errors'
+import { KeyCooldownError, KeyPoolExhaustedError } from './errors'
 import { KeyPool } from './key-pool'
 
 function makeMockFetch(responses: Array<{ status: number; body?: object }>) {
@@ -54,7 +54,7 @@ function makeMockFetch(responses: Array<{ status: number; body?: object }>) {
     )
   }
 
-  return { mockFetch, keysUsed: () => keysUsed }
+  return { mockFetch, keysUsed: () => keysUsed, getCallCount: () => callCount }
 }
 
 describe('KeyPool — constructor validation', () => {
@@ -185,5 +185,193 @@ describe('KeyPool.withOptions()', () => {
   it('does not throw when called with empty options', () => {
     const pool = new KeyPool({ keys: ['sk-a'] })
     expect(() => pool.withOptions({})).not.toThrow()
+  })
+})
+
+describe('KeyPool — smart-pool construction', () => {
+  it('constructs without error when quotas is a preset string', () => {
+    expect(() => new KeyPool({ keys: ['sk-a'], quotas: 'gemini-free' })).not.toThrow()
+  })
+
+  it('constructs without error when quotas is a custom QuotaConfig', () => {
+    expect(() => new KeyPool({ keys: ['sk-a'], quotas: { rpm: 30 } })).not.toThrow()
+  })
+
+  it('throws at construction with descriptive error when preset is invalid', () => {
+    expect(
+      // @ts-expect-error: intentionally invalid preset for test
+      () => new KeyPool({ keys: ['sk-a'], quotas: 'invalid-provider' }),
+    ).toThrow(/invalid-provider/)
+  })
+
+  it('throws at construction when QuotaConfig is missing rpm', () => {
+    expect(
+      // @ts-expect-error: intentionally missing rpm for test
+      () => new KeyPool({ keys: ['sk-a'], quotas: { tpm: 50_000 } }),
+    ).toThrow(/rpm/)
+  })
+
+  it('constructs without error when health is false', () => {
+    expect(() => new KeyPool({ keys: ['sk-a'], quotas: { rpm: 30 }, health: false })).not.toThrow()
+  })
+
+  it('constructs without error when health is an empty object (defaults applied)', () => {
+    expect(() => new KeyPool({ keys: ['sk-a'], quotas: { rpm: 30 }, health: {} })).not.toThrow()
+  })
+})
+
+describe('KeyPool — smart-pool KeyCooldownError', () => {
+  it('first request succeeds then second throws KeyCooldownError when rpm=1', async () => {
+    const { mockFetch, getCallCount } = makeMockFetch([{ status: 200 }, { status: 200 }])
+    const pool = new KeyPool({
+      keys: ['sk-a'],
+      quotas: { rpm: 1 },
+      tokenCounter: () => 999,
+      baseURL: 'https://fake.api/v1',
+      openaiOptions: { fetch: mockFetch },
+    })
+
+    // First request should succeed
+    await expect(
+      pool.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    ).resolves.toBeDefined()
+
+    // Second request should throw KeyCooldownError proactively (no HTTP request made)
+    const err = await pool.chat.completions
+      .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
+      .catch((e) => e)
+
+    expect(err).toBeInstanceOf(KeyCooldownError)
+    expect(typeof err.retryAfterMs).toBe('number')
+    expect(err.retryAfterMs).toBeGreaterThan(0)
+
+    // Verify mock was only called once (second request was blocked proactively before HTTP)
+    expect(getCallCount()).toBe(1)
+  })
+
+  it('onExhausted callback NOT called when KeyCooldownError is thrown', async () => {
+    const { mockFetch } = makeMockFetch([{ status: 200 }])
+    const onExhausted = vi.fn()
+    const pool = new KeyPool({
+      keys: ['sk-a'],
+      quotas: { rpm: 1 },
+      tokenCounter: () => 999,
+      onExhausted,
+      baseURL: 'https://fake.api/v1',
+      openaiOptions: { fetch: mockFetch },
+    })
+
+    // First request succeeds
+    await pool.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    // Second request throws KeyCooldownError — onExhausted must NOT be called
+    await pool.chat.completions
+      .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
+      .catch(() => {})
+
+    expect(onExhausted).not.toHaveBeenCalled()
+  })
+})
+
+describe('KeyPool — smart-pool success feedback (SCENARIO-7.3)', () => {
+  it('successful response updates budget with actual token usage', async () => {
+    // Mock returns usage: { total_tokens: 8 }
+    const { mockFetch } = makeMockFetch([{ status: 200 }, { status: 200 }])
+    const pool = new KeyPool({
+      keys: ['sk-a'],
+      quotas: { rpm: 10, tpm: 99 },
+      // Custom counter estimates 50 tokens — but real usage is 8 (from mock)
+      tokenCounter: () => 50,
+      baseURL: 'https://fake.api/v1',
+      openaiOptions: { fetch: mockFetch },
+    })
+
+    // First request: estimates 50 tokens, actual response has total_tokens: 8
+    await pool.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+
+    // If recordOutcome corrected the budget (50 → 8):
+    //   8 (corrected) + 50 (new estimate) = 58 > 99? NO → passes
+    // If NOT corrected (bug):
+    //   50 (stale estimate) + 50 (new) = 100 > 99? YES → KeyCooldownError
+
+    // Second request should succeed ONLY if budget was corrected
+    await expect(
+      pool.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    ).resolves.toBeDefined()
+  })
+})
+
+describe('KeyPool — backward compatibility (no quotas)', () => {
+  it('without quotas: all 429s → KeyPoolExhaustedError (NOT KeyCooldownError)', async () => {
+    const { mockFetch } = makeMockFetch([{ status: 429 }])
+    const pool = new KeyPool({
+      keys: ['sk-a', 'sk-b'],
+      baseURL: 'https://fake.api/v1',
+      openaiOptions: { fetch: mockFetch },
+    })
+    const err = await pool.chat.completions
+      .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
+      .catch((e) => e)
+
+    expect(err).toBeInstanceOf(KeyPoolExhaustedError)
+    expect(err).not.toBeInstanceOf(KeyCooldownError)
+  })
+
+  it('without quotas: onExhausted IS called when all keys exhausted', async () => {
+    const { mockFetch } = makeMockFetch([{ status: 429 }])
+    const onExhausted = vi.fn()
+    const pool = new KeyPool({
+      keys: ['sk-a', 'sk-b'],
+      baseURL: 'https://fake.api/v1',
+      onExhausted,
+      openaiOptions: { fetch: mockFetch },
+    })
+    await pool.chat.completions
+      .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
+      .catch(() => {})
+
+    expect(onExhausted).toHaveBeenCalledOnce()
+  })
+})
+
+describe('KeyPool — withOptions preserves smart-pool config', () => {
+  it('derived client still has smart-pool behavior after withOptions', async () => {
+    const { mockFetch } = makeMockFetch([{ status: 200 }, { status: 200 }])
+    const pool = new KeyPool({
+      keys: ['sk-a'],
+      quotas: { rpm: 1 },
+      tokenCounter: () => 999,
+      baseURL: 'https://fake.api/v1',
+      openaiOptions: { fetch: mockFetch },
+    })
+
+    const derived = pool.withOptions({ timeout: 5_000 })
+
+    // First request succeeds
+    await expect(
+      derived.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    ).resolves.toBeDefined()
+
+    // Second request should throw KeyCooldownError (smart-pool preserved)
+    const err = await derived.chat.completions
+      .create({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] })
+      .catch((e) => e)
+
+    expect(err).toBeInstanceOf(KeyCooldownError)
   })
 })

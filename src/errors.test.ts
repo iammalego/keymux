@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KeyPoolExhaustedError, maskKey } from './errors'
+import { KeyCooldownError, KeyPoolExhaustedError, maskKey } from './errors'
 
 describe('maskKey', () => {
   it('masks a standard key showing first 4 and last 4 chars', () => {
@@ -16,6 +16,32 @@ describe('maskKey', () => {
   })
   it('returns "***" for empty string', () => {
     expect(maskKey('')).toBe('***')
+  })
+})
+
+describe('KeyCooldownError', () => {
+  const err = new KeyCooldownError(90_000)
+
+  it('extends Error', () => {
+    expect(err).toBeInstanceOf(Error)
+  })
+  it('has name "KeyCooldownError"', () => {
+    expect(err.name).toBe('KeyCooldownError')
+  })
+  it('stores retryAfterMs correctly', () => {
+    expect(err.retryAfterMs).toBe(90_000)
+  })
+  it('is instanceof KeyCooldownError', () => {
+    expect(err).toBeInstanceOf(KeyCooldownError)
+  })
+  it('message contains retry seconds (ceiled)', () => {
+    // 90_000 ms → 90 s
+    expect(err.message).toContain('90s')
+  })
+  it('message contains retry seconds for fractional ms', () => {
+    const err2 = new KeyCooldownError(61_500)
+    // 61_500 ms → ceil(61.5) = 62 s
+    expect(err2.message).toContain('62s')
   })
 })
 

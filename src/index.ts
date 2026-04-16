@@ -1,4 +1,6 @@
 export { KeyPool } from './key-pool'
-export { KeyPoolExhaustedError, maskKey } from './errors'
+export { KeyPoolExhaustedError, KeyCooldownError, maskKey } from './errors'
+export { PRESETS } from './presets'
 export type { KeyPoolConfig } from './key-pool'
 export type { Strategy } from './scheduler'
+export type { ProviderPreset, QuotaConfig, HealthConfig } from './types'
