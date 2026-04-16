@@ -4,13 +4,13 @@
 [![node version](https://img.shields.io/node/v/keymux)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/keymux)](./LICENSE)
 
-Transparent API key pooling for the OpenAI SDK — rotate keys on 429 automatically.
+Transparent API key pooling for the OpenAI SDK — smart scheduling with proactive rate limit avoidance.
 
 ## Why keymux?
 
 Many LLM providers offer free tiers with generous token allowances — but rate limits are enforced **per API key**, not per account. The only way to multiply your effective throughput is to pool keys from multiple accounts and rotate automatically when one hits its limit.
 
-`keymux` does exactly that. Drop it in as a replacement for the `OpenAI` client and it handles rotation transparently — no changes to your existing calls required. Works with any OpenAI-compatible provider: Gemini, Groq, OpenRouter, and more.
+`keymux` does exactly that. Drop it in as a replacement for the `OpenAI` client and it handles rotation transparently — no changes to your existing calls required. With **smart scheduling**, it tracks per-key budgets and avoids 429s before they happen. Works with any OpenAI-compatible provider: Gemini, Groq, OpenRouter, and more.
 
 ### Free-tier providers with OpenAI-compatible endpoints
 
@@ -32,7 +32,8 @@ Many LLM providers offer free tiers with generous token allowances — but rate 
   │           │◄────────│  │ Key 1 │ │ Key 2 │ │ Key 3 │  │◄────────│             │
   └───────────┘         │  └───────┘ └───────┘ └───────┘  │         └─────────────┘
                         │                                 │
-                        │   auto-rotates on every 429     │
+                        │  Smart: picks key with budget   │
+                        │  Basic: auto-rotates on 429     │
                         └─────────────────────────────────┘
 ```
 
@@ -88,18 +89,99 @@ const client = new KeyPool({
 })
 ```
 
-When the first key hits its rate limit, `keymux` retries automatically with the next key. If all keys are exhausted, a `KeyPoolExhaustedError` is thrown.
+By default, `keymux` retries automatically with the next key when one hits a 429. If all keys are exhausted, a `KeyPoolExhaustedError` is thrown.
+
+## Smart Scheduling
+
+Add `quotas` to enable proactive rate limit avoidance. Instead of waiting for 429 errors, `keymux` tracks per-key budgets and picks the key with available capacity **before** sending the request.
 
 ```typescript
-import { KeyPool, KeyPoolExhaustedError } from 'keymux'
+import { KeyPool, KeyCooldownError } from 'keymux'
+
+const client = new KeyPool({
+  keys: [
+    process.env.GEMINI_KEY_1!,
+    process.env.GEMINI_KEY_2!,
+    process.env.GEMINI_KEY_3!,
+  ],
+  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  strategy: 'least-recently-used',
+  quotas: 'gemini-free', // ← enables smart scheduling
+})
+
+try {
+  const response = await client.chat.completions.create({
+    model: 'gemini-2.0-flash',
+    messages: [{ role: 'user', content: 'Hello!' }],
+  })
+} catch (err) {
+  if (err instanceof KeyCooldownError) {
+    // All keys are temporarily on cooldown — you know exactly when to retry
+    console.log(`Retry in ${err.retryAfterMs}ms`)
+    await new Promise((r) => setTimeout(r, err.retryAfterMs))
+  }
+}
+```
+
+### What smart scheduling does
+
+| Feature | Without `quotas` | With `quotas` |
+|---------|-----------------|---------------|
+| Key selection | Blind rotation (round-robin/LRU) | Picks key with available budget |
+| Rate limit detection | After 429 (wasted request) | Before sending (proactive) |
+| Daily limit handling | Keeps retrying dead keys | Marks key until midnight reset |
+| Failing keys | Keeps using them | Circuit breaker excludes them |
+| Error on exhaustion | `KeyPoolExhaustedError` | `KeyCooldownError` with `retryAfterMs` |
+| Token tracking | None | Estimates before, corrects after with real usage |
+
+### Provider presets
+
+Use a preset string for known providers:
+
+| Preset | RPM | TPM | RPD |
+|--------|-----|-----|-----|
+| `'gemini-free'` | 15 | — | 1,500 |
+| `'openai-tier-1'` | 60 | 60,000 | — |
+| `'openai-tier-2'` | 3,500 | 90,000 | — |
+| `'groq-free'` | 30 | — | 14,400 |
+| `'openrouter-free'` | 20 | — | 200 |
+
+Or pass a custom `QuotaConfig`:
+
+```typescript
+const client = new KeyPool({
+  keys: [...],
+  quotas: { rpm: 100, tpm: 50_000, rpd: 10_000 },
+})
+```
+
+### Health monitoring
+
+Keys that return repeated errors (5xx, network failures) are automatically excluded via a circuit breaker:
+
+- **3 failures** within 60s → key excluded for 60s
+- After cooldown → one probe request allowed
+- Probe succeeds → key returns to rotation
+- Probe fails → excluded again with doubled cooldown (up to 5 min)
+
+Disable with `health: false`. Configure thresholds with `health: { threshold: 5, cooldownMs: 30_000 }`.
+
+### Error handling
+
+```typescript
+import { KeyPool, KeyCooldownError, KeyPoolExhaustedError } from 'keymux'
 
 try {
   const response = await client.chat.completions.create({ ... })
 } catch (err) {
+  if (err instanceof KeyCooldownError) {
+    // Smart scheduling: all keys temporarily on cooldown
+    // No HTTP request was made — blocked proactively
+    console.log(`Retry in ${err.retryAfterMs}ms`)
+  }
   if (err instanceof KeyPoolExhaustedError) {
-    console.error(`All ${err.keys.length} keys are rate-limited:`, err.keys)
-    // err.keys contains masked keys (safe to log)
-    // err.cause is the original RateLimitError from the SDK
+    // Basic rotation: all keys hit 429 after retrying
+    console.error(`All ${err.keys.length} keys exhausted:`, err.keys)
   }
 }
 ```
@@ -156,14 +238,17 @@ const client = new KeyPool(config: KeyPoolConfig)
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `keys` | `string[]` | required | API keys for rotation. Minimum 1; rotation is effective with 2+. |
-| `baseURL` | `string` | OpenAI default | Provider base URL. Gemini: `'https://generativelanguage.googleapis.com/v1beta/openai'`, Groq: `'https://api.groq.com/openai/v1'`, OpenRouter: `'https://openrouter.ai/api/v1'` |
+| `baseURL` | `string` | OpenAI default | Provider base URL. |
 | `strategy` | `Strategy` | `'round-robin'` | Key rotation strategy. |
-| `maxRetries` | `number` | `keys.length` | Maximum retry attempts before giving up. Defaults to one attempt per key. |
-| `onExhausted` | `(maskedKeys: string[]) => void` | — | Called when all keys are exhausted. Receives masked key list (safe to log/alert). |
-| `openaiOptions` | `Omit<ClientOptions, 'apiKey' \| 'baseURL' \| 'maxRetries'>` | — | Pass-through options for the underlying OpenAI client (e.g. `fetch`, `timeout`, `defaultHeaders`). |
+| `maxRetries` | `number` | `keys.length` | Maximum retry attempts before giving up. |
+| `onExhausted` | `(maskedKeys: string[]) => void` | — | Called when all keys are exhausted via 429. Not called for `KeyCooldownError`. |
+| `quotas` | `ProviderPreset \| QuotaConfig` | — | Enables smart scheduling. Pass a preset string or custom config. |
+| `health` | `HealthConfig \| false` | `{}` | Circuit breaker config. `false` disables health monitoring. |
+| `tokenCounter` | `(body: unknown) => number` | chars/4 heuristic | Custom token estimation function for budget tracking. |
+| `openaiOptions` | `Omit<ClientOptions, ...>` | — | Pass-through options for the underlying OpenAI client. |
 
 > [!NOTE]
-> `maxRetries` defaults to `keys.length`, meaning each key gets exactly one attempt before `KeyPoolExhaustedError` is thrown. Increase it if you want multiple attempts per key.
+> Without `quotas`, keymux behaves exactly like v0.1.x — reactive rotation only. Smart scheduling is fully opt-in.
 
 ### `Strategy`
 
@@ -174,14 +259,51 @@ type Strategy = 'round-robin' | 'least-recently-used'
 - **`round-robin`** (default): Cycles through keys in order. O(1). Deterministic.
 - **`least-recently-used`**: Returns the key that was used least recently. O(N). Best for free-tier providers with per-minute limits — maximizes time between reuses of the same key.
 
-### `KeyPoolExhaustedError`
+### `QuotaConfig`
 
-Thrown when all keys in the pool have been rate-limited after exhausting all retry attempts.
+Custom rate limit configuration. `rpm` is required — other dimensions are optional (untracked if omitted).
+
+```typescript
+interface QuotaConfig {
+  rpm: number              // Requests per minute (required)
+  tpm?: number             // Tokens per minute
+  rpd?: number             // Requests per day
+  tpd?: number             // Tokens per day
+  dailyResetHour?: number  // UTC hour for daily reset (default: 7 = midnight PT)
+}
+```
+
+### `HealthConfig`
+
+Circuit breaker configuration. All fields optional with sensible defaults.
+
+```typescript
+interface HealthConfig {
+  threshold?: number       // Failures to trip circuit (default: 3)
+  windowSize?: number      // Failure counting window in ms (default: 60,000)
+  cooldownMs?: number      // Base cooldown when tripped (default: 60,000)
+  maxCooldownMs?: number   // Max cooldown after backoff (default: 300,000)
+}
+```
+
+### `KeyCooldownError`
+
+Thrown **proactively** when smart scheduling determines no key has available budget. No HTTP request is made.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `name` | `'KeyPoolExhaustedError'` | Always `'KeyPoolExhaustedError'` for reliable `instanceof` checks. |
-| `message` | `string` | Human-readable summary, e.g. `'All 3 API keys are rate-limited'`. |
+| `name` | `'KeyCooldownError'` | For reliable `instanceof` checks. |
+| `message` | `string` | e.g. `'All API keys are on cooldown. Retry after 23s'` |
+| `retryAfterMs` | `number` | Shortest cooldown remaining across all keys, in milliseconds. |
+
+### `KeyPoolExhaustedError`
+
+Thrown **reactively** when all keys have been rate-limited after exhausting all retry attempts (429 errors).
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `'KeyPoolExhaustedError'` | For reliable `instanceof` checks. |
+| `message` | `string` | e.g. `'All 3 API keys are rate-limited'` |
 | `keys` | `string[]` | All keys that were tried, **masked** (e.g. `'AIza...cdef'`). Safe to log. |
 | `cause` | `RateLimitError` | The original `RateLimitError` from the OpenAI SDK. |
 
@@ -205,7 +327,8 @@ maskKey('short')                   // → '***'
 Full TypeScript types ship with the package. No `@types/` package needed.
 
 ```typescript
-import type { KeyPoolConfig, Strategy } from 'keymux'
+import { KeyPool, KeyCooldownError, KeyPoolExhaustedError, PRESETS, maskKey } from 'keymux'
+import type { KeyPoolConfig, Strategy, QuotaConfig, HealthConfig, ProviderPreset } from 'keymux'
 ```
 
 ## Project Structure
@@ -214,12 +337,17 @@ import type { KeyPoolConfig, Strategy } from 'keymux'
 keymux/
 ├── src/
 │   ├── index.ts              # Public exports
-│   ├── key-pool.ts           # KeyPool — extends OpenAI, rotation entry point
-│   ├── key-pool.test.ts
+│   ├── key-pool.ts           # KeyPool — extends OpenAI, wires everything together
+│   ├── smart-scheduler.ts    # 3-stage key selection (health → budget → tie-break)
+│   ├── budget-tracker.ts     # Per-key sliding window RPM/TPM/RPD tracking
+│   ├── health-monitor.ts     # Per-key circuit breaker with exponential backoff
+│   ├── token-estimator.ts    # Pre-request token estimation (heuristic or custom)
+│   ├── presets.ts            # Provider preset definitions and resolution
+│   ├── request-context.ts    # AsyncLocalStorage for request-scoped state
 │   ├── scheduler.ts          # KeyScheduler — round-robin and LRU logic
-│   ├── scheduler.test.ts
-│   ├── errors.ts             # KeyPoolExhaustedError + maskKey()
-│   └── errors.test.ts
+│   ├── errors.ts             # KeyPoolExhaustedError + KeyCooldownError + maskKey
+│   ├── types.ts              # Shared type definitions
+│   └── *.test.ts             # Co-located test files (136 tests)
 ├── dist/                     # Build output (ESM + CJS + .d.ts)
 ├── tsup.config.ts            # Build config
 ├── vitest.config.ts          # Test config

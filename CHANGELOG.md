@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Smart scheduling with proactive rate limit avoidance — enable with `quotas` config option
+- Per-key budget tracking with sliding windows for RPM, TPM, RPD, and TPD quota dimensions
+- Provider presets for one-liner config: `'gemini-free'`, `'openai-tier-1'`, `'openai-tier-2'`, `'groq-free'`, `'openrouter-free'`
+- `KeyCooldownError` thrown proactively when all keys are on cooldown — includes `retryAfterMs` so callers know exactly when to retry
+- Per-key circuit breaker (health monitoring) with exponential backoff — automatically excludes failing keys
+- Post-response budget correction using actual `usage.total_tokens` from API responses
+- 429 response header parsing for differentiated cooldowns (RPM vs TPM vs RPD)
+- Custom token counter injection via `tokenCounter` config option
+- `PRESETS` object exported for programmatic access to provider rate limit configurations
+- New exported types: `QuotaConfig`, `HealthConfig`, `ProviderPreset`, `KeyCooldownError`
+
+### Changed
+
+- `KeyPoolConfig` extended with optional `quotas`, `health`, and `tokenCounter` fields (fully backward compatible)
+
 ## [0.1.0] - 2026-04-15
 
 ### Added

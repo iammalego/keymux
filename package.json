@@ -2,7 +2,7 @@
   "name": "keymux",
   "version": "0.1.2",
   "type": "module",
-  "description": "Transparent API key pooling for the OpenAI SDK — rotate keys on 429 automatically",
+  "description": "Transparent API key pooling for the OpenAI SDK — smart scheduling with proactive rate limit avoidance",
   "license": "MIT",
   "exports": {
     ".": {
@@ -54,6 +54,10 @@
     "retry",
     "quota",
     "throttle",
+    "budget",
+    "circuit-breaker",
+    "smart-scheduling",
+    "rate-limit-prediction",
     "iammalego",
     "malego"
   ],
