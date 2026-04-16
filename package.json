@@ -1,6 +1,6 @@
 {
   "name": "keymux",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Transparent API key pooling for the OpenAI SDK — rotate keys on 429 automatically",
   "license": "MIT",
@@ -41,7 +41,22 @@
     "@vitest/coverage-v8": "^4.0.0",
     "@biomejs/biome": "^1.9.0"
   },
-  "keywords": ["openai", "api-key", "rate-limit", "key-rotation", "gemini", "pool"],
+  "keywords": [
+    "openai",
+    "api-key",
+    "rate-limit",
+    "key-rotation",
+    "gemini",
+    "pool",
+    "llm",
+    "ai",
+    "proxy",
+    "retry",
+    "quota",
+    "throttle",
+    "iammalego",
+    "malego"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/iammalego/keymux.git"
