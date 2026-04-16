@@ -10,10 +10,23 @@ Transparent API key pooling for the OpenAI SDK — rotate keys on 429 automatica
 
 Google's Gemini models are available for free via the OpenAI-compatible endpoint. The catch: each Google account is limited to a small number of requests per minute on the free tier. With `keymux`, you can pool multiple API keys from different Google accounts and let the library automatically rotate to the next key whenever a 429 (rate limit) response is received — no changes to your existing OpenAI SDK calls required. `KeyPool` extends `OpenAI` directly, so it is a true drop-in replacement.
 
+## How it works
+
+```
+  ┌───────────┐         ┌─────────────────────────────────┐         ┌─────────────┐
+  │           │         │            keymux               │         │             │
+  │  Your App │────────►│  ┌───────┐ ┌───────┐ ┌───────┐  │────────►│  Gemini API │
+  │           │◄────────│  │ Key 1 │ │ Key 2 │ │ Key 3 │  │◄────────│             │
+  └───────────┘         │  └───────┘ └───────┘ └───────┘  │         └─────────────┘
+                        │                                 │
+                        │   auto-rotates on every 429     │
+                        └─────────────────────────────────┘
+```
+
 ## Installation
 
 ```bash
-npm install keymux openai
+npm i keymux
 ```
 
 > [!IMPORTANT]
