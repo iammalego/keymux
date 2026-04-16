@@ -249,6 +249,7 @@ const client = new KeyPool(config: KeyPoolConfig)
 
 > [!NOTE]
 > Without `quotas`, keymux behaves exactly like v0.1.x — reactive rotation only. Smart scheduling is fully opt-in.
+> When `quotas` is set, `strategy` is ignored — smart scheduling uses its own key selection (lowest budget utilization).
 
 ### `Strategy`
 
