@@ -1,6 +1,6 @@
 {
   "name": "keymux",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Transparent API key pooling for the OpenAI SDK — smart scheduling with proactive rate limit avoidance",
   "license": "MIT",
@@ -19,7 +19,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
