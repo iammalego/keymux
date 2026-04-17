@@ -32,7 +32,9 @@ Many LLM providers offer free tiers with generous token allowances — but rate 
 |----------|-----------|------------|----------|
 | [Gemini](https://aistudio.google.com/apikey) | Permanent | 15 RPM / 1,500 RPD | `https://generativelanguage.googleapis.com/v1beta/openai` |
 | [Groq](https://console.groq.com) | Permanent | 30 RPM / 6,000 tokens/min | `https://api.groq.com/openai/v1` |
-| [OpenRouter](https://openrouter.ai) | Permanent (28+ free models) | 20 RPM / 200 req/day | `https://openrouter.ai/api/v1` |
+| [Cerebras](https://cloud.cerebras.ai) | Permanent | 30 RPM / 1M tokens/day | `https://api.cerebras.ai/v1` |
+| [OpenRouter](https://openrouter.ai) | Permanent (29+ free models) | 20 RPM / 200 req/day | `https://openrouter.ai/api/v1` |
+| [NVIDIA NIM](https://build.nvidia.com) | Permanent | ~40 RPM / 100+ models | `https://integrate.api.nvidia.com/v1` |
 
 > [!NOTE]
 > Rate limits apply **per API key**. Each key must come from a separate account to get an independent quota — multiple keys from the same account share the same limit.
@@ -80,12 +82,30 @@ const client = new KeyPool({
 })
 ```
 
+**Cerebras**
+
+```typescript
+const client = new KeyPool({
+  keys: [process.env.CEREBRAS_KEY_1!, process.env.CEREBRAS_KEY_2!],
+  baseURL: 'https://api.cerebras.ai/v1',
+})
+```
+
 **OpenRouter**
 
 ```typescript
 const client = new KeyPool({
   keys: [process.env.OPENROUTER_KEY_1!, process.env.OPENROUTER_KEY_2!],
   baseURL: 'https://openrouter.ai/api/v1',
+})
+```
+
+**NVIDIA NIM**
+
+```typescript
+const client = new KeyPool({
+  keys: [process.env.NVIDIA_KEY_1!, process.env.NVIDIA_KEY_2!],
+  baseURL: 'https://integrate.api.nvidia.com/v1',
 })
 ```
 
@@ -214,6 +234,14 @@ Free tier: 15 RPM and 1,500 RPD per key with Gemini 2.0 Flash.
 
 Free tier: 30 RPM and 6,000 tokens/min per key.
 
+### Cerebras
+
+1. Go to [cloud.cerebras.ai](https://cloud.cerebras.ai) and create an account
+2. Navigate to **API Keys** → **Create API Key**
+3. Repeat with different accounts to get more keys
+
+Free tier: 30 RPM and 1M tokens/day per key. No credit card required.
+
 ### OpenRouter
 
 1. Go to [openrouter.ai](https://openrouter.ai) and create an account
@@ -222,6 +250,15 @@ Free tier: 30 RPM and 6,000 tokens/min per key.
 4. Repeat with different accounts to get more keys
 
 Free tier: 20 RPM and 200 requests/day per key.
+
+### NVIDIA NIM
+
+1. Join the [NVIDIA Developer Program](https://build.nvidia.com) (free)
+2. Navigate to any model page and click **Get API Key**
+3. Copy the key (format: `nvapi-...`)
+4. Repeat with different accounts to get more keys
+
+Free tier: ~40 RPM, 100+ models available.
 
 ## API Reference
 
