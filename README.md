@@ -12,18 +12,7 @@ Many LLM providers offer free tiers with generous token allowances — but rate 
 
 `keymux` does exactly that. Drop it in as a replacement for the `OpenAI` client and it handles rotation transparently — no changes to your existing calls required. With **smart scheduling**, it tracks per-key budgets and avoids 429s before they happen. Works with any OpenAI-compatible provider: Gemini, Groq, OpenRouter, and more.
 
-### Free-tier providers with OpenAI-compatible endpoints
-
-| Provider | Free tier | Rate limit | Base URL |
-|----------|-----------|------------|----------|
-| [Gemini](https://aistudio.google.com/apikey) | Permanent | 15 RPM / 1,500 RPD | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| [Groq](https://console.groq.com) | Permanent | 30 RPM / 6,000 tokens/min | `https://api.groq.com/openai/v1` |
-| [OpenRouter](https://openrouter.ai) | Permanent (28+ free models) | 20 RPM / 200 req/day | `https://openrouter.ai/api/v1` |
-
-> [!NOTE]
-> Rate limits apply **per API key**. Each key must come from a separate account to get an independent quota — multiple keys from the same account share the same limit.
-
-## How it works
+### How it works
 
 ```
   ┌───────────┐         ┌─────────────────────────────────┐         ┌─────────────┐
@@ -36,6 +25,17 @@ Many LLM providers offer free tiers with generous token allowances — but rate 
                         │  Basic: auto-rotates on 429     │
                         └─────────────────────────────────┘
 ```
+
+### Free-tier providers with OpenAI-compatible endpoints
+
+| Provider | Free tier | Rate limit | Base URL |
+|----------|-----------|------------|----------|
+| [Gemini](https://aistudio.google.com/apikey) | Permanent | 15 RPM / 1,500 RPD | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| [Groq](https://console.groq.com) | Permanent | 30 RPM / 6,000 tokens/min | `https://api.groq.com/openai/v1` |
+| [OpenRouter](https://openrouter.ai) | Permanent (28+ free models) | 20 RPM / 200 req/day | `https://openrouter.ai/api/v1` |
+
+> [!NOTE]
+> Rate limits apply **per API key**. Each key must come from a separate account to get an independent quota — multiple keys from the same account share the same limit.
 
 ## Installation
 
