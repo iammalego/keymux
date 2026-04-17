@@ -18,10 +18,17 @@ import type { HealthConfig, ProviderPreset, QuotaConfig, QuotaDimension } from '
 export interface KeyPoolConfig {
   /**
    * API keys to rotate across. Minimum 1; rotation is effective with 2+.
-   * Each key should come from a **different Google account** when using Gemini free tier —
+   * Each key should come from a **different account** when using free tiers —
    * multiple keys from the same account share the same quota.
+   *
+   * Accepts an array of strings or a single comma-separated string:
+   * ```typescript
+   * keys: ['key1', 'key2', 'key3']
+   * keys: 'key1,key2,key3'
+   * keys: process.env.GEMINI_KEYS! // "key1,key2,key3"
+   * ```
    */
-  keys: string[]
+  keys: string[] | string
 
   /**
    * Base URL of the API provider.
@@ -120,12 +127,15 @@ export class KeyPool extends OpenAI {
   readonly #smartScheduler?: SmartScheduler
 
   constructor(config: KeyPoolConfig) {
-    const { keys, baseURL, strategy, maxRetries, openaiOptions } = config
+    const { baseURL, strategy, maxRetries, openaiOptions } = config
+    const rawKeys = typeof config.keys === 'string' ? config.keys.split(',') : config.keys
 
-    if (!keys || keys.length === 0) {
+    if (!rawKeys || rawKeys.length === 0) {
       throw new Error('KeyPool requires at least one API key in `keys`')
     }
-    const validKeys = keys.filter((k) => typeof k === 'string' && k.trim() !== '')
+    const validKeys = rawKeys
+      .map((k) => (typeof k === 'string' ? k.trim() : ''))
+      .filter((k) => k !== '')
     if (validKeys.length === 0) {
       throw new Error('KeyPool: all keys are empty strings — provide at least one non-empty key')
     }

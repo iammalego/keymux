@@ -85,6 +85,24 @@ describe('KeyPool — constructor validation', () => {
     expect(pool.embeddings).toBeDefined()
     expect(pool.models).toBeDefined()
   })
+  it('accepts a comma-separated string for keys', () => {
+    const pool = new KeyPool({ keys: 'sk-a,sk-b,sk-c' })
+    expect(pool.maxRetries).toBe(3)
+  })
+  it('trims whitespace around comma-separated keys', () => {
+    const pool = new KeyPool({ keys: ' sk-a , sk-b ' })
+    expect(pool.maxRetries).toBe(2)
+  })
+  it('filters empty segments from comma-separated string', () => {
+    const pool = new KeyPool({ keys: 'sk-a,,sk-b,' })
+    expect(pool.maxRetries).toBe(2)
+  })
+  it('throws on empty comma-separated string', () => {
+    expect(() => new KeyPool({ keys: '' })).toThrow(/keys/i)
+  })
+  it('throws on comma-only string', () => {
+    expect(() => new KeyPool({ keys: ',,,' })).toThrow()
+  })
 })
 
 describe('KeyPool — 429 rotation', () => {

@@ -56,11 +56,7 @@ npm i keymux
 import { KeyPool } from 'keymux'
 
 const client = new KeyPool({
-  keys: [
-    process.env.GEMINI_KEY_1!,
-    process.env.GEMINI_KEY_2!,
-    process.env.GEMINI_KEY_3!,
-  ],
+  keys: process.env.GEMINI_KEYS!, // "key1,key2,key3"
   baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
   strategy: 'least-recently-used',
 })
@@ -77,7 +73,7 @@ console.log(response.choices[0]?.message.content)
 
 ```typescript
 const client = new KeyPool({
-  keys: [process.env.GROQ_KEY_1!, process.env.GROQ_KEY_2!],
+  keys: process.env.GROQ_KEYS!,
   baseURL: 'https://api.groq.com/openai/v1',
 })
 ```
@@ -86,7 +82,7 @@ const client = new KeyPool({
 
 ```typescript
 const client = new KeyPool({
-  keys: [process.env.CEREBRAS_KEY_1!, process.env.CEREBRAS_KEY_2!],
+  keys: process.env.CEREBRAS_KEYS!,
   baseURL: 'https://api.cerebras.ai/v1',
 })
 ```
@@ -95,7 +91,7 @@ const client = new KeyPool({
 
 ```typescript
 const client = new KeyPool({
-  keys: [process.env.OPENROUTER_KEY_1!, process.env.OPENROUTER_KEY_2!],
+  keys: process.env.OPENROUTER_KEYS!,
   baseURL: 'https://openrouter.ai/api/v1',
 })
 ```
@@ -104,10 +100,13 @@ const client = new KeyPool({
 
 ```typescript
 const client = new KeyPool({
-  keys: [process.env.NVIDIA_KEY_1!, process.env.NVIDIA_KEY_2!],
+  keys: process.env.NVIDIA_KEYS!,
   baseURL: 'https://integrate.api.nvidia.com/v1',
 })
 ```
+
+> [!TIP]
+> `keys` accepts both a string array and a comma-separated string, so you can use a single env var per provider instead of one per key.
 
 By default, `keymux` retries automatically with the next key when one hits a 429. If all keys are exhausted, a `KeyPoolExhaustedError` is thrown.
 
